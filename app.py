@@ -32,8 +32,7 @@ download_yolo_model()
 app = Flask(__name__)
 CORS(app)
 
-with open('GoogleMapAPIKey.txt', 'r') as f:
-    GOOGLE_MAPS_API_KEY = f.read().strip()
+GOOGLE_MAPS_API_KEY = 'AIzaSyDPN7mrbDchNS8QY4oCmXo_WJZUjAFlETw'
 
 model = YOLO(YOLO_MODEL_PATH)
 
