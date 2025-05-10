@@ -44,7 +44,7 @@ CORS(app)
 ort_session = ort.InferenceSession(ONNX_MODEL_PATH)
 
 # Image preprocessing
-import cv2
+
 def preprocess_image(image):
     img = image.resize((IMAGE_SIZE, IMAGE_SIZE)).convert('RGB')
     img_np = np.array(img).astype(np.float32)
