@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
 import requests
 from PIL import Image
@@ -41,6 +41,10 @@ IMAGE_SIZE = 640
 NUM_TILES = 5  # 3x3 grid → final stitched image 1920x1920
 AIRPLANE_CLASS_IDS = [4]
 CONF_THRESHOLD = 0.3
+
+@app.route('/')
+def serve_index():
+    return send_from_directory('.', 'index.html')
 
 @app.route('/detect', methods=['POST'])
 def detect():
