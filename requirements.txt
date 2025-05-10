@@ -2,4 +2,5 @@ flask
 flask-cors
 requests
 pillow
-ultralytics
+ultralytics[cpu]
+--extra-index-url https://download.pytorch.org/whl/cpu
