@@ -10,8 +10,8 @@ import math
 import datetime
 
 # Constants
-ONNX_MODEL_PATH = "yolov8x.onnx"
-YOLO_MODEL_URL = "https://github.com/botenstein/jetspotter-ai/releases/download/v1.0/yolov8x.onnx"
+ONNX_MODEL_PATH = "yolov8s.onnx"
+YOLO_MODEL_URL = "https://github.com/botenstein/jetspotter-ai/releases/download/v1.0/yolov8s.onnx"
 IMAGE_SIZE = 640
 NUM_TILES = 5
 AIRPLANE_CLASS_ID = 4
