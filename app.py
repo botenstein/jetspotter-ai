@@ -13,122 +13,120 @@ import datetime
 ONNX_MODEL_PATH = "yolov8s.onnx"
 YOLO_MODEL_URL = "https://github.com/botenstein/jetspotter-ai/releases/download/v1.0/yolov8s.onnx"
 IMAGE_SIZE = 640
-NUM_TILES = 5
+NUM_TILES = 1
 AIRPLANE_CLASS_ID = 4
-CONF_THRESHOLD = 0.3
+CONF_THRESHOLD = 0.1
 
-# Download ONNX model if not present
-def download_onnx_model():
+# Download ONNX model if missing
+def download_model():
     if not os.path.exists(ONNX_MODEL_PATH):
-        print("Downloading YOLOv8x ONNX model...")
-        response = requests.get(YOLO_MODEL_URL, stream=True)
-        if response.status_code == 200:
+        print("⬇️ Downloading YOLOv8s ONNX model...")
+        r = requests.get(YOLO_MODEL_URL, stream=True)
+        if r.status_code == 200:
             with open(ONNX_MODEL_PATH, "wb") as f:
-                for chunk in response.iter_content(chunk_size=8192):
+                for chunk in r.iter_content(8192):
                     f.write(chunk)
-            print("✅ ONNX model downloaded.")
+            print("✅ Download complete.")
         else:
-            raise Exception(f"Failed to download model: HTTP {response.status_code}")
+            raise Exception(f"Model download failed: HTTP {r.status_code}")
 
-download_onnx_model()
+download_model()
 
 # Load Google Maps API key
 with open('GoogleMapAPIKey.txt', 'r') as f:
     GOOGLE_MAPS_API_KEY = f.read().strip()
 
-# Initialize Flask app
+# Flask app
 app = Flask(__name__)
 CORS(app)
 
-# Load ONNX model session
+# Load ONNX model
 ort_session = ort.InferenceSession(ONNX_MODEL_PATH)
 
-# Image preprocessing
+# Preprocess image for ONNX
+def preprocess(img: Image.Image):
+    img = img.resize((IMAGE_SIZE, IMAGE_SIZE)).convert("RGB")
+    x = np.array(img).astype(np.float32).transpose(2, 0, 1) / 255.0
+    return np.expand_dims(x, axis=0)
 
-def preprocess_image(image):
-    img = image.resize((IMAGE_SIZE, IMAGE_SIZE)).convert('RGB')
-    img_np = np.array(img).astype(np.float32)
-    img_np = img_np.transpose(2, 0, 1) / 255.0
-    img_np = np.expand_dims(img_np, axis=0)
-    return img_np
+# Run model
+def infer(img: Image.Image):
+    x = preprocess(img)
+    return ort_session.run(None, {ort_session.get_inputs()[0].name: x})
 
-# Inference with ONNX model
-def run_inference(image):
-    inputs = {ort_session.get_inputs()[0].name: preprocess_image(image)}
-    outputs = ort_session.run(None, inputs)
-    return outputs
+# Post-process (model must have NMS built-in)
+def extract_boxes(preds):
+    # Expecting output: (1, num_detections, 6) = [x1, y1, x2, y2, conf, class_id]
+    boxes = []
+    for box in preds[0][0]:  # remove batch dim
+        x1, y1, x2, y2, conf, cls = box.tolist()
+        if conf >= CONF_THRESHOLD and int(cls) == AIRPLANE_CLASS_ID:
+            boxes.append([x1, y1, x2, y2, conf, int(cls)])
+    return boxes
 
-# Serve frontend
 @app.route('/')
-def serve_index():
+def index():
     return send_from_directory('.', 'index.html')
 
-# Detection endpoint
 @app.route('/detect', methods=['POST'])
 def detect():
     try:
         data = request.get_json()
         north, south, east, west = data['north'], data['south'], data['east'], data['west']
-        lat_span = north - south
-        lng_span = east - west
-        lat_step = lat_span / NUM_TILES
-        lng_step = lng_span / NUM_TILES
+        lat_span, lng_span = north - south, east - west
+        lat_step, lng_step = lat_span / NUM_TILES, lng_span / NUM_TILES
 
-        stitched_image = Image.new('RGB', (IMAGE_SIZE * NUM_TILES, IMAGE_SIZE * NUM_TILES))
+        stitched = Image.new("RGB", (IMAGE_SIZE * NUM_TILES, IMAGE_SIZE * NUM_TILES))
 
         for i in range(NUM_TILES):
             for j in range(NUM_TILES):
-                sub_north = north - i * lat_step
-                sub_south = sub_north - lat_step
-                sub_west = west + j * lng_step
-                sub_east = sub_west + lng_step
-                center_lat = (sub_north + sub_south) / 2
-                center_lng = (sub_east + sub_west) / 2
-                bbox_width = abs(sub_east - sub_west)
-                zoom = min(21, max(0, math.floor(math.log2(360 * (IMAGE_SIZE / 256) / bbox_width))))
-                tile_url = (
-                    f"https://maps.googleapis.com/maps/api/staticmap?center={center_lat},{center_lng}"
+                n = north - i * lat_step
+                s = n - lat_step
+                w = west + j * lng_step
+                e = w + lng_step
+                lat, lng = (n + s) / 2, (e + w) / 2
+                zoom = min(21, max(0, math.floor(math.log2(360 * (IMAGE_SIZE / 256) / abs(e - w)))))
+                url = (
+                    f"https://maps.googleapis.com/maps/api/staticmap?center={lat},{lng}"
                     f"&zoom={zoom}&size={IMAGE_SIZE}x{IMAGE_SIZE}&maptype=satellite&key={GOOGLE_MAPS_API_KEY}"
                 )
-                response = requests.get(tile_url)
-                if response.status_code != 200:
+                resp = requests.get(url)
+                if resp.status_code != 200:
                     print(f"⚠️ Failed tile {i},{j}")
                     continue
-                tile_img = Image.open(BytesIO(response.content)).convert('RGB')
-                stitched_image.paste(tile_img, (j * IMAGE_SIZE, i * IMAGE_SIZE))
+                tile = Image.open(BytesIO(resp.content)).convert("RGB")
+                stitched.paste(tile, (j * IMAGE_SIZE, i * IMAGE_SIZE))
 
-        # Save image
-        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        stitched_filename = f'stitched_{timestamp}.jpg'
-        stitched_image.save(stitched_filename)
+        # Save debug image
+        name = f"stitched_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+        stitched.save(name)
+        print(f"✅ Stitched image saved as {name}")
 
-        # Inference
-        detections = run_inference(stitched_image)
+        # Inference + boxes
+        raw_preds = infer(stitched)
+        boxes = extract_boxes(raw_preds)
 
-        all_detections = []
-        boxes = detections[0] if isinstance(detections, list) else detections
-        for box in boxes[0]:
-            x1, y1, x2, y2, conf, cls = box.tolist()
-            if int(cls) == AIRPLANE_CLASS_ID and conf > CONF_THRESHOLD:
-                lat1 = north - (y1 / (IMAGE_SIZE * NUM_TILES)) * lat_span
-                lat2 = north - (y2 / (IMAGE_SIZE * NUM_TILES)) * lat_span
-                lng1 = west + (x1 / (IMAGE_SIZE * NUM_TILES)) * lng_span
-                lng2 = west + (x2 / (IMAGE_SIZE * NUM_TILES)) * lng_span
-                all_detections.append({
-                    'class_id': int(cls),
-                    'confidence': float(conf),
-                    'lat1': max(lat1, lat2),
-                    'lat2': min(lat1, lat2),
-                    'lng1': min(lng1, lng2),
-                    'lng2': max(lng1, lng2)
-                })
+        # Convert pixel to lat/lng
+        results = []
+        for x1, y1, x2, y2, conf, cls in boxes:
+            lat1 = north - (y1 / (IMAGE_SIZE * NUM_TILES)) * lat_span
+            lat2 = north - (y2 / (IMAGE_SIZE * NUM_TILES)) * lat_span
+            lng1 = west + (x1 / (IMAGE_SIZE * NUM_TILES)) * lng_span
+            lng2 = west + (x2 / (IMAGE_SIZE * NUM_TILES)) * lng_span
+            results.append({
+                'class_id': cls,
+                'confidence': conf,
+                'lat1': max(lat1, lat2),
+                'lat2': min(lat1, lat2),
+                'lng1': min(lng1, lng2),
+                'lng2': max(lng1, lng2)
+            })
 
-        return jsonify({'message': 'Detection complete', 'detections': all_detections})
+        return jsonify({'message': 'Detection complete', 'detections': results})
 
     except Exception as e:
-        print(f"❌ Server error: {str(e)}")
+        print(f"❌ Server error: {e}")
         return jsonify({'error': str(e)}), 500
 
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port, debug=True)
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=5000, debug=True)
