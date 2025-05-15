@@ -42,8 +42,10 @@ ort_session = ort.InferenceSession(ONNX_MODEL_PATH)
 
 # ---------------------- Load Google API Key ----------------------
 try:
+    logging.info("⬇️ Fetching Google Maps API Key...")
     with open('GoogleMapAPIKey.txt', 'r') as f:
         GOOGLE_MAPS_API_KEY = f.read().strip()
+        logging.info("✅ Successfully read Google Maps API key")
 except Exception as e:
     raise RuntimeError(f"Failed to read Google Maps API key: {e}")
 
