@@ -14,7 +14,9 @@ from flask_cors import CORS
 # ---------------------- Configuration ----------------------
 ONNX_MODEL_PATH = os.getenv("MODEL_PATH", "yolov8s.onnx")
 YOLO_MODEL_URL = os.getenv("MODEL_URL", "https://github.com/botenstein/jetspotter-ai/releases/download/v1.0/yolov8s.onnx")
-GOOGLE_MAPS_API_KEY_FILE = os.getenv("GOOGLE_KEY_FILE", "GoogleMapAPIKey.txt")
+# Load Google Maps API key
+with open('GoogleMapAPIKey.txt', 'r') as f:
+    GOOGLE_MAPS_API_KEY = f.read().strip()
 
 IMAGE_SIZE = int(os.getenv("IMAGE_SIZE", 640))
 NUM_TILES = int(os.getenv("NUM_TILES", 1))  # future-proofing
