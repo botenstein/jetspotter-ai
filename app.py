@@ -14,9 +14,6 @@ from flask_cors import CORS
 # ---------------------- Configuration ----------------------
 ONNX_MODEL_PATH = os.getenv("MODEL_PATH", "yolov8s.onnx")
 YOLO_MODEL_URL = os.getenv("MODEL_URL", "https://github.com/botenstein/jetspotter-ai/releases/download/v1.0/yolov8s.onnx")
-# Load Google Maps API key
-with open('GoogleMapAPIKey.txt', 'r') as f:
-    GOOGLE_MAPS_API_KEY = f.read().strip()
 
 IMAGE_SIZE = int(os.getenv("IMAGE_SIZE", 640))
 NUM_TILES = int(os.getenv("NUM_TILES", 1))  # future-proofing
@@ -45,7 +42,7 @@ ort_session = ort.InferenceSession(ONNX_MODEL_PATH)
 
 # ---------------------- Load Google API Key ----------------------
 try:
-    with open(GOOGLE_MAPS_API_KEY_FILE, 'r') as f:
+    with open('GoogleMapAPIKey.txt', 'r') as f:
         GOOGLE_MAPS_API_KEY = f.read().strip()
 except Exception as e:
     raise RuntimeError(f"Failed to read Google Maps API key: {e}")
